@@ -1,4 +1,6 @@
 bench.db
+bench_employees.db
+.cache/
 *.cwasm
 out_*.txt
 work_*.db

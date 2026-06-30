@@ -24,7 +24,17 @@ Two independent workloads exercise different integer widths:
 
 Each rep copies `bench.db` to a fresh writable file so writes are always applied to identical starting data.
 
+
+## Benchmark DBs
+- **Synthetic (`bench.db`)** — generated rather than reused, because the SQLite build here is compiled with `-DSQLITE_OMIT_FLOATING_POINT`, which disqualifies most standard SQL benchmarks outright (TPC-H/DS/C, SSB, Northwind, Chinook, NYC Taxi are all decimal/float-heavy by spec). Generating our own data gave precise control over column types (pure i32- and i64-range `INTEGER` columns, no floats anywhere) and let us build a write-heavy aggregate workload dense enough in integer arithmetic to make AN-encoding overhead clearly measurable. 
+- **MySQL `employees`** — the real [sample db](https://github.com/datacharmer/test_db). `salary` is `INT` with no floating-point columns anywhere, so it loads natively under the OMIT_FLOATING_POINT build with no schema changes. It's a narrow **OLTP** HR schema (point lookups + joins on employee/department/date, not bulk aggregation).
+
 ## Results
+
+### Sqlite binary size
+
+- AN-off: ~5 MB
+- AN-on: ~50 MB
 
 ### i32 Workload
 
@@ -47,6 +57,17 @@ Each rep copies `bench.db` to a fresh writable file so writes are always applied
 ### Correctness
 
 Output between AN-off and AN-on is **byte-identical** for both workloads, confirming that AN-encoding is transparent to query results.
+
+## Employees benchmark
+
+In addition to the synthetic primary benchmark, `setup_employees.sh` / `run_employees.sh` pull and run the actual MySQL [`employees` sample db](https://github.com/datacharmer/test_db) (pinned commit `e324b56193`) — 6 tables, ~3M rows, ~240 MB loaded. The schema is a 1:1 type translation into SQLite (`DATE`/`VARCHAR`/`ENUM` → `TEXT`, `INT` → `INTEGER`); no row data is altered. `workload_employees.sql` runs realistic OLTP queries against it: point lookups by `emp_no`, current-department/title/salary joins, per-department aggregates, an onboarding/raise/promotion/termination write sequence, an index build, and `VACUUM`.
+
+| Mode | Avg | Min | Max | Peak RSS (avg) |
+|------|-----|-----|-----|----------------|
+| AN-off | 36.63 s | 36.63 s | 36.63 s | 321,436 KB |
+| AN-on  | 656.18 s | 656.18 s | 656.18 s | 1,359,760 KB |
+
+**Slowdown: 17.91x** (1 rep — re-run with more reps for stable min/max). Output is **byte-identical** between modes.
 
 ## Reproducing
 
@@ -87,4 +108,19 @@ cd an-sqlite-bench
 
 # Run with a custom rep count
 ./run.sh 10
+```
+
+### Running the secondary (real `employees`) benchmark
+
+Requires network access to clone `datacharmer/test_db` on first run.
+
+```bash
+# Clone the real employees dataset and load it into bench_employees.db (run once)
+./setup_employees.sh
+
+# Run the benchmark (default 5 reps)
+./run_employees.sh
+
+# Run with a custom rep count
+./run_employees.sh 10
 ```
