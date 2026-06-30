@@ -1,0 +1,6 @@
+bench.db
+*.cwasm
+out_*.txt
+work_*.db
+.builtN
+.time_*
